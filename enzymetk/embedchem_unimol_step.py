@@ -8,8 +8,6 @@ from multiprocessing.dummy import Pool as ThreadPool
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-
-
 class UniMol(Step):
     
     def __init__(self, smiles_col: str, unimol_model = 'unimolv2', 

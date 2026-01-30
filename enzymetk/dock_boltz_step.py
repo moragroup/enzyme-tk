@@ -17,7 +17,7 @@ except ImportError as e:
 class Boltz(Step):
     
     def __init__(self, id_col: str, seq_col: str, substrate_col: str, intermediate_col: str, output_dir: str, 
-                num_threads: 1, venv_name = 'enzymetk', env_name = None):
+                num_threads: 1, env_name = None, args=None):
         super().__init__()
         self.id_col = id_col
         self.seq_col = seq_col
@@ -27,6 +27,7 @@ class Boltz(Step):
         self.num_threads = num_threads or 1
         self.conda = env_name
         self.env_name = env_name
+        self.args = args
 
     def install(self, env_args=None):
         # e.g. env args could by python=='3.1.1.
@@ -50,7 +51,10 @@ class Boltz(Step):
             if not isinstance(substrate, str):
                 substrate = ''
             print(run_id, seq, substrate)
-            run_boltz_affinity(run_id, seq, substrate, self.output_dir, intermediate)
+            if self.args:
+                run_boltz_affinity(run_id, seq, substrate, self.output_dir, intermediate, self.args)
+            else:
+                run_boltz_affinity(run_id, seq, substrate, self.output_dir, intermediate)
             output_filenames.append(f'{self.output_dir}/{run_id}/')
         return output_filenames
     

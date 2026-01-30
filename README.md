@@ -10,7 +10,15 @@ Enzyme-tk is a collection of tools for enzyme engineering, setup as interoperabl
 ## Install base package to import modules
 
 ```bash
+conda create --name enzymetk python==3.12 -y
 pip install enzymetk
+# Install torch for your specific cuda version
+pip install torch torchvision #--index-url https://download.pytorch.org/whl/cu130
+```
+## If you're at the bleeding edge, and going to use older models e.g. chemBERTa2 you may need to run
+```
+pip uninstall transformers -y
+pip install "transformers<5"
 ```
 
 ## For each module run install the first time you're running it
@@ -37,7 +45,8 @@ bm.venv = None # so it knows to use conda i.e. forces it not to use venv
 - BLAST [cpu, tested with both, see notebook]
 - ChemBERTA [cpu, colab]
 - Boltz
-- Chai
+- Chai: conda install -c conda-forge pdbfixer
+
 - esm2/3 [cpu, see notebook]
 - foldseek [tested and works]
 - ligandmpnn
@@ -48,6 +57,12 @@ bm.venv = None # so it knows to use conda i.e. forces it not to use venv
 - substrate_similarity [good, cpu]
 - tree
 - unimol [good, cpu]
+
+Docko git@github.com:ArianeMora/docko.git 
+ValueError: CCD component ALA not found!
+boltz predict  boltz.fasta --use_msa_server --cache ./mol
+
+srun -p gpu --qos=normal --gres=gpu:1 --pty --mem=64G  --time=000:30:00 bash
 
 pipelines: reads --> poreChop --> Flye --> Prokka --> Squidly --> Foldseek --> Boltz --> Chai
 pipelines: seqs --> BLAST --> Proteinfer --> Foldseek -->  MMseqs --> ClustalOmega --> FastTree

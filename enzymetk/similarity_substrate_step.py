@@ -20,6 +20,7 @@ try:
 except ImportError as e:
     print("SubstrateDist: Needs rdkit package. Install with pip install rdkit.")    
 
+
 class SubstrateDist(Step):
     
     def __init__(self, id_column_name: str, smiles_column_name: str, smiles_string: str, num_threads=1):
