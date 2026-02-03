@@ -10,33 +10,13 @@ Enzyme-tk is a collection of tools for enzyme engineering, setup as interoperabl
 ## Install base package to import modules
 
 ```bash
-conda create --name enzymetk python==3.12 -y
+conda create --name enzymetk python==3.10 -y
 pip install enzymetk
 # Install torch for your specific cuda version
 pip install torch torchvision #--index-url https://download.pytorch.org/whl/cu130
 ```
-## If you're at the bleeding edge, and going to use older models e.g. chemBERTa2 you may need to run
-```
-pip uninstall transformers -y
-pip install "transformers<5"
-```
 
-## For each module run install the first time you're running it
-This will install as a venv where possible and conda where the tools don't allow for venvs.
-See specific tools for info.
-```
-bm = BLAST(id_col, seq_col, label_col)
-bm.install() # by default will create a venv or if needed a conda env
-```
-Note if you want to use your specific environment you can install externally and override the installed venv or conda env e.g.
-```
-bm = BLAST(id_col, seq_col, label_col)
-bm.conda = 'blast_env' # an already installed env on your computer
-bm.venv = None # so it knows to use conda i.e. forces it not to use venv
-```
-
-
-### Install only the specific requirements you need (recomended) 
+### Install only the specific requirements you need (recommended) 
 
 For installation instructions check out the [wiki](https://github.com/moragroup/enzyme-tk/wiki/Installations).
 
