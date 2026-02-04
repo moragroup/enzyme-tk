@@ -30,7 +30,7 @@ source install_all.sh
 
 ## Usage
 
-If you have any issues at all just email me using my caltech email: `amora at caltech . edu`
+If you have any issues at all just email me using my caltech email: `amora at aithyra . ac . at`
 
 This is a work-in progress! e.g. some tools (e.g. proteInfer and CLEAN) require extra data to be downloaded in order to run (like model weights.) I'm working on integrating these atm, buzz me if you need this!
 
