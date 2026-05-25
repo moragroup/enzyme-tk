@@ -16,3 +16,4 @@ df = pd.DataFrame(rows, columns=[id_col, seq_col, substrate_col])
 clean_dir = '/mnt/labs/data/mora/code/enzymetk/enzyme-tk/enzymetk/conda_envs/CLEAN/app/'
 # Note! You cannot have underscores in the sample name (presumably no funky characters)
 output_df = (df << (CLEAN(id_col, seq_col, clean_dir, num_threads=1)))
+print(output_df)

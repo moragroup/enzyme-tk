@@ -22,7 +22,7 @@ Date: March 2025
 __title__ = 'enzymetk'
 __description__ = 'Toolkit for enzymes and what not'
 __url__ = 'https://github.com/arianemora/enzyme-tk/'
-__version__ = '0.0.9'
+__version__ = '0.1.0'
 __author__ = 'Ariane Mora'
 __author_email__ = 'ariane.n.mora@gmail.com'
 __license__ = 'GPL3'
@@ -44,6 +44,7 @@ from enzymetk.dock_vina_step import Vina
 
 # Chemical Embeddings
 from enzymetk.embedchem_chemberta_step import ChemBERT
+from enzymetk.embedchem_drfp_step import DRFP
 from enzymetk.embedchem_rxnfp_step import RxnFP
 from enzymetk.embedchem_selformer_step import SelFormer
 from enzymetk.embedchem_unimol_step import UniMol
@@ -94,6 +95,7 @@ __all__ = [
     'Vina',
     # Chemical Embeddings
     'ChemBERT',
+    'DRFP',
     'RxnFP',
     'SelFormer',
     'UniMol',

@@ -126,7 +126,7 @@ class EmbedESM(Step):
     
     def __run_esm(self, model_location, fasta_file, output_dir, repr_layers=[-1], include_features=[], toks_per_batch=4096, truncation_seq_length=1024, nogpu=False):
         import torch
-        from esm import Alphabet, FastaBatchedDataset, ProteinBertModel, pretrained, MSATransformer
+        from esm import FastaBatchedDataset, pretrained, MSATransformer
         model, alphabet = pretrained.load_model_and_alphabet(model_location)
         model.eval()
         if isinstance(model, MSATransformer):
@@ -170,7 +170,6 @@ class EmbedESM(Step):
                 for i, label in enumerate(labels):
 
                     output_file = output_dir / f"{label}.pt"
-                    print(output_file)
                     output_file.parent.mkdir(parents=True, exist_ok=True)
                     result = {"label": label}
                     truncate_len = min(truncation_seq_length, len(strs[i]))
@@ -192,7 +191,6 @@ class EmbedESM(Step):
                         }
                     if return_contacts:
                         result["contacts"] = contacts[i, : truncate_len, : truncate_len].clone()
-                    print(result)
                     torch.save(
                         result,
                         output_file,

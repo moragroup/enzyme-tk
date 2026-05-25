@@ -140,6 +140,54 @@ class EmbedChemBERTTool(EnzymeTool):
 
 
 @ToolRegistry.register
+class EmbedReactionDRFPTool(EnzymeTool):
+    """Generate reaction embeddings using Differential Reaction Fingerprints (DRFP)."""
+
+    name = "embed_reaction_drfp"
+    description = (
+        "Generate differential reaction fingerprints (DRFP) from reaction SMILES. "
+        "DRFP encodes the change in molecular substructures between reactants and "
+        "products, making it useful for reaction similarity search, classification, "
+        "and yield prediction."
+    )
+    category = "embedding"
+    required_env = "drfp"
+
+    def run(
+        self,
+        smiles: List[str],
+        ids: Optional[List[str]] = None,
+        id_column: str = "Entry",
+        smiles_column: str = "SMILES",
+        n_folded_length: int = 2048,
+        radius: int = 3,
+        rings: bool = True,
+        min_radius: int = 0,
+        num_threads: int = 1,
+        tmp_dir: Optional[str] = None,
+    ) -> ToolResult:
+        from enzymetk.embedchem_drfp_step import DRFP
+
+        df = self.molecules_to_df(smiles, ids, id_column, smiles_column)
+        step = DRFP(
+            smiles_col=smiles_column,
+            num_threads=num_threads,
+            n_folded_length=n_folded_length,
+            radius=radius,
+            rings=rings,
+            min_radius=min_radius,
+            tmp_dir=tmp_dir,
+        )
+        result_df = step.execute(df)
+        return self.make_result(
+            result_df,
+            self.name,
+            f"DRFP embeddings generated for {len(smiles)} reactions "
+            f"(length={n_folded_length}, radius={radius})",
+        )
+
+
+@ToolRegistry.register
 class EmbedRxnFPTool(EnzymeTool):
     """Generate reaction fingerprint embeddings using RxnFP."""
 
