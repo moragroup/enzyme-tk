@@ -3,7 +3,7 @@ from tempfile import TemporaryDirectory
 import logging
 import numpy as np
 from enzymetk.step import Step
-
+from tqdm import tqdm
 from multiprocessing.dummy import Pool as ThreadPool
 
 logger = logging.getLogger(__name__)
@@ -18,6 +18,7 @@ class DRFP(Step):
         self.num_threads = num_threads
         self.conda = env_name
         self.env_name = env_name
+        self.tmp_dir = tmp_dir
         self.venv = venv_name if venv_name else f'{env_name}/bin/python'
         
     def install(self, env_args=None):
@@ -26,8 +27,18 @@ class DRFP(Step):
     def __execute(self, df: pd.DataFrame) -> pd.DataFrame:
         from drfp import DrfpEncoder
         smiles_list = list(df[self.smiles_col].values)
-        fps = DrfpEncoder.encode(smiles_list)
-        df['drfp_fps']  = fps
+        encodings = []
+        count_failed = 0    
+        # encode them like this so that if it failes on one smiles string, it doesn't fail on the whole batch
+        for smiles in tqdm(smiles_list, desc="Encoding SMILES"):
+            try:
+                encodings.append(DrfpEncoder.encode(smiles))
+            except Exception as e:
+                count_failed += 1
+                encodings.append(None)
+        df['drfp_fps']  = encodings
+        logger.info(f"Failed to encode {count_failed} SMILES strings. Successfully encoded {len(smiles_list) - count_failed} SMILES strings.")
+        self.u.dp([f"Failed to encode {count_failed} SMILES strings. Successfully encoded {len(smiles_list) - count_failed} SMILES strings."])
         return df
     
     def execute(self, df: pd.DataFrame) -> pd.DataFrame:
