@@ -198,6 +198,71 @@ class StructureSearchFoldSeekTool(EnzymeTool):
 
 
 @ToolRegistry.register
+class SequenceStructureSearchFoldSeekTool(EnzymeTool):
+    """Unified sequence + structure similarity search using FoldSeek with ProstT5."""
+
+    name = "search_foldseek_seq_struct"
+    description = (
+        "Search protein sequences or structures against a reference database "
+        "(PDB, AlphaFold/Swiss-Prot, or custom) using FoldSeek. Sequences are "
+        "converted to structural tokens via ProstT5; structures are searched directly. "
+        "Returns hits with fractional identity, e-values, and bitscores."
+    )
+    category = "search"
+    required_env = "enzymetk"
+
+    def run(
+        self,
+        sequences: List[Dict[str, str]],
+        prostt5_weights_path: str,
+        database_root_path: str,
+        databases: List[str] = None,
+        structure_paths: Optional[List[str]] = None,
+        id_column: str = "Entry",
+        sequence_column: str = "Sequence",
+        structure_column: str = "structure",
+        args: Optional[List[str]] = None,
+        num_threads: int = 1,
+        tmp_dir: Optional[str] = None,
+        env_name: Optional[str] = None,
+    ) -> ToolResult:
+        from enzymetk.similarity_sequence_and_structure_step import (
+            FoldSeek as SeqStructFoldSeek,
+            FoldSeekDatabase,
+        )
+
+        if databases is None:
+            databases = ["PDB"]
+
+        df = self.sequences_to_df(sequences, id_column, sequence_column)
+
+        struct_col = None
+        if structure_paths is not None:
+            df[structure_column] = structure_paths
+            struct_col = structure_column
+
+        step = SeqStructFoldSeek(
+            id_column_name=id_column,
+            sequence_column_name=sequence_column,
+            prostt5_weights_path=prostt5_weights_path,
+            databases=databases,
+            database_root_path=database_root_path,
+            structure_column_name=struct_col,
+            args=args,
+            num_threads=num_threads,
+            tmp_dir=tmp_dir,
+            env_name=env_name,
+        )
+        result_df = step.execute(df)
+        mode = "structure" if struct_col else "sequence"
+        return self.make_result(
+            result_df,
+            self.name,
+            f"FoldSeek {mode} search completed: {len(result_df)} hits for {len(sequences)} queries across {len(databases)} databases",
+        )
+
+
+@ToolRegistry.register
 class ReactionSimilarityTool(EnzymeTool):
     """Compute reaction SMARTS fingerprint similarity."""
 

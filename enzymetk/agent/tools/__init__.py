@@ -27,6 +27,7 @@ from enzymetk.agent.tools.search_tools import (
     SearchMMseqsTool,
     SearchFoldSeekTool,
     StructureSearchFoldSeekTool,
+    SequenceStructureSearchFoldSeekTool,
     ReactionSimilarityTool,
     SubstrateSimilarityTool,
 )
@@ -55,7 +56,8 @@ __all__ = [
     "EmbedChemBERTTool", "EmbedRxnFPTool", "EmbedSelFormerTool", "EmbedUniMolTool",
     # Search
     "SearchBlastTool", "SearchMMseqsTool", "SearchFoldSeekTool",
-    "StructureSearchFoldSeekTool", "ReactionSimilarityTool", "SubstrateSimilarityTool",
+    "StructureSearchFoldSeekTool", "SequenceStructureSearchFoldSeekTool",
+    "ReactionSimilarityTool", "SubstrateSimilarityTool",
     # Alignment
     "ClustalOmegaTool", "FastTreeTool",
     # Design

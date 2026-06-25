@@ -61,7 +61,6 @@ setup(name='enzymetk',
           'enzymetk',
           'enzymetk.agent',
           'enzymetk.agent.tools',
-          'enzymetk.langchain',
       ],
       include_package_data=True,
       entry_points={
