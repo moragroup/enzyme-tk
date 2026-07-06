@@ -2,6 +2,8 @@
 *software
 *tmp*
 # ---------------- specific ignores
+# Funce model weights (~1.5 GB, copied in via setup; never committed)
+data/Funce/
 *.idea
 *.DS_Store*
 *.VS*

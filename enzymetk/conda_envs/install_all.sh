@@ -4,6 +4,7 @@
 ./clean.sh
 ./docko.sh
 ./foldseek.sh
+./folddisco.sh
 ./metagenomics.sh
 ./proteinfer.sh
 ./rfdiffusion.sh

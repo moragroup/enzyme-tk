@@ -139,6 +139,17 @@ def install_foldseek(
 
 
 @app.command()
+def install_folddisco(
+    verbose: bool = typer.Option(True, "--verbose/--quiet", "-v/-q", help="Show command output"),
+):
+    """Install Folddisco for structural motif search.
+
+    Searches discontinuous structural motifs across large sets of structures.
+    """
+    run_script("folddisco.sh", verbose)
+
+
+@app.command()
 def install_ligandmpnn(
     verbose: bool = typer.Option(True, "--verbose/--quiet", "-v/-q", help="Show command output"),
 ):
@@ -228,6 +239,7 @@ def list_tools():
         ("docko", "Docko for molecular docking"),
         ("fasttree", "FastTree for phylogenetic tree construction"),
         ("foldseek", "Foldseek for protein structure search"),
+        ("folddisco", "Folddisco for structural motif search"),
         ("ligandmpnn", "LigandMPNN for protein sequence design"),
         ("metagenomics", "Metagenomics tools (prokka, mmseqs2, Porechop, sratoolkit)"),
         ("proteinfer", "ProteInfer for protein function prediction"),

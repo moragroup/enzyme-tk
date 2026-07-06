@@ -5,7 +5,6 @@ import numpy as np
 from enzymetk.step import Step
 from tqdm import tqdm
 from multiprocessing.dummy import Pool as ThreadPool
-
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
@@ -38,7 +37,7 @@ class DRFP(Step):
                 encodings.append(None)
         df['drfp_fps']  = encodings
         logger.info(f"Failed to encode {count_failed} SMILES strings. Successfully encoded {len(smiles_list) - count_failed} SMILES strings.")
-        self.u.dp([f"Failed to encode {count_failed} SMILES strings. Successfully encoded {len(smiles_list) - count_failed} SMILES strings."])
+        print([f"Failed to encode {count_failed} SMILES strings. Successfully encoded {len(smiles_list) - count_failed} SMILES strings."])
         return df
     
     def execute(self, df: pd.DataFrame) -> pd.DataFrame:

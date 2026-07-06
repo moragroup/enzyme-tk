@@ -66,6 +66,7 @@ from enzymetk.metagenomics_prokka_annotate_genes import Prokka
 
 # Prediction
 from enzymetk.predict_catalyticsite_step import ActiveSitePred
+from enzymetk.predict_Funce_step import Funce
 
 # Sequence Search
 from enzymetk.sequence_search_blast import BLAST
@@ -78,6 +79,7 @@ from enzymetk.similarity_substrate_step import SubstrateDist
 
 # Structure Search (aliased to avoid conflict with similarity_foldseek_step.FoldSeek)
 from enzymetk.structure_search_foldseek import FoldSeek as StructureFoldSeek
+from enzymetk.structure_search_folddisco import Folddisco
 
 
 __all__ = [
@@ -112,6 +114,7 @@ __all__ = [
     'Prokka',
     # Prediction
     'ActiveSitePred',
+    'Funce',
     # Sequence Search
     'BLAST',
     # Similarity Search
@@ -121,6 +124,7 @@ __all__ = [
     'SubstrateDist',
     # Structure Search
     'StructureFoldSeek',
+    'Folddisco',
     # Agent framework
     'agent',
     'langchain',

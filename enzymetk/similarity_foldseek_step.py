@@ -13,14 +13,15 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-def process_clustering(filename, df, id_column_name):
+def process_clustering(filename, df, id_column_name, split_chain=True):
     clustering = pd.read_csv(filename, delimiter='\t', header=None)
     #rename heading as cluster reference and id
     clustering.columns = ['foldseek_representative_cluster_structure', id_column_name]
     clustering.drop_duplicates(subset=id_column_name, keep='first', inplace=True)
-    # Remove the chain to a separate column
-    clustering['chain'] = ['_'.join(c.split('_')[-1]) for c in clustering[id_column_name].values]
-    clustering[id_column_name] = ['_'.join(c.split('_')[:-1]) for c in clustering[id_column_name].values]
+    if split_chain:
+        # PDB-style ids look like "1abc_A"; split the chain into its own column.
+        clustering['chain'] = [c.split('_')[-1] for c in clustering[id_column_name].values]
+        clustering[id_column_name] = ['_'.join(c.split('_')[:-1]) for c in clustering[id_column_name].values]
     clustering.set_index(id_column_name, inplace=True)
     # Join the clustering with the df
     df = df.set_index(id_column_name)
@@ -83,27 +84,45 @@ class FoldSeek(Step):
             if self.query_type == 'structures':
                 cmd += pdb_files + [f'{tmp_dir}/clusterFolds', f'{tmp_dir}']
             else:
+                # easy-cluster does not accept fasta input, so build a foldseek DB
+                # from sequences (using ProstT5) and run the database-based `cluster`
+                # workflow, then export the cluster mapping as a TSV with `createtsv`.
                 subcmd = ['foldseek', 'databases', 'ProstT5', 'weights', 'tmp']
                 self.run(subcmd)
-                subcmd = ['foldseek', 'createdb', f'{tmp_dir}/{tmp_label}_seqs.fasta', f'db_{tmp_label}', '--prostt5-model', 'weights']
+                subcmd = ['foldseek', 'createdb', f'{tmp_dir}/{tmp_label}_seqs.fasta',
+                          f'{tmp_dir}/db_{tmp_label}', '--prostt5-model', 'weights']
                 self.run(subcmd)
-                cmd = ['foldseek', 'cluster']
 
-                # Convert the file to a fasta and then pass that file name 
-                cmd += [ f'db_{tmp_label}', f'{tmp_dir}/clusterFolds', f'{tmp_dir}']
+                cluster_db = f'{tmp_dir}/clusterFolds'
+                cmd = ['foldseek', 'cluster',
+                       f'{tmp_dir}/db_{tmp_label}', cluster_db, f'{tmp_dir}']
+                if self.args is not None:
+                    cmd.extend(self.args)
+                self.run(cmd)
+
+                # Export the clusterDB to the TSV file the rest of the pipeline expects.
+                tsv_cmd = ['foldseek', 'createtsv',
+                           f'{tmp_dir}/db_{tmp_label}', f'{tmp_dir}/db_{tmp_label}',
+                           cluster_db, f'{tmp_dir}/clusterFolds_cluster.tsv']
+                self.run(tsv_cmd)
+                # Skip the trailing self.run(cmd) below; cluster + createtsv already ran.
+                cmd = None
 
         # add in args
-        if self.args is not None:
+        if self.args is not None and cmd is not None:
            cmd.extend(self.args)
 
-        self.run(cmd)
+        if cmd is not None:
+            self.run(cmd)
         
         if self.method == 'search':
             df = pd.read_csv(f'{tmp_dir}{tmp_label}.txt', header=None, sep='\t')
             df.columns = ['query', 'target', 'fident', 'alnlen', 'mismatch', 
                       'gapopen', 'qstart', 'qend', 'tstart', 'tend', 'evalue', 'bits']
         elif self.method == 'cluster':
-            df = process_clustering(f'{tmp_dir}/clusterFolds_cluster.tsv', df, self.id_column_name)   
+            split_chain = self.query_type == 'structures'
+            df = process_clustering(f'{tmp_dir}/clusterFolds_cluster.tsv', df,
+                                    self.id_column_name, split_chain=split_chain)
             return df
         return df
     
