@@ -9,7 +9,13 @@ def run_rxnfp(output_filename, input_filename, label):
     rxns = df[label].values
     model, tokenizer = get_default_model_and_tokenizer()
     rxnfp_generator = RXNBERTFingerprintGenerator(model, tokenizer)
-    fps = rxnfp_generator.convert(rxns)
+    # df[label].values is a numpy array and the tokenizer rejects those outright
+    # ("Input [...] is not valid. Should be a string, a list/tuple of strings"),
+    # which happened for a single reaction too -- a type problem, not a batching
+    # one, so list() is the actual fix. convert_batch then returns one 256-d
+    # vector per row; convert returns a single flat 256-d vector that would only
+    # fit a 256-row frame. The two agree exactly for one reaction.
+    fps = rxnfp_generator.convert_batch(list(rxns))
     df['rxnfp'] = fps
     with open(output_filename, 'wb') as file:
         pickle.dump(df, file)
