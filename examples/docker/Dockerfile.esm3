@@ -1,0 +1,136 @@
+# ESM3-open protein embeddings: sequences -> the 1536-d column Funce consumes.
+# CPU only, and runs offline once the weight cache on the mount is populated.
+#
+# Build:  docker build -f examples/docker/Dockerfile.esm3 -t enzymetk-esm3 .
+# Run:    docker run --rm -v "$(pwd)/examples/data:/data" enzymetk-esm3
+#
+# First run downloads ~5.4 GB of weights into /data/hf and takes a while; every
+# run after that prints "(cached)" and needs no network. Peak RSS is ~5.6 GB, so
+# give Docker at least 8 GB.
+#
+# Why this exists: Funce's forward_enzyme is nn.Linear(in=1536) and no ESM-2 model
+# emits 1536, so ESM3-open is the only protein embedder that feeds it. See the
+# table in examples/encode_reaction.py. This image is the protein half of a Funce
+# input; Dockerfile.encode_reaction is the reaction half.
+#
+# ESM-2 is deliberately absent -- see the note above the pip block.
+
+# python:3.12, not the 3.10 the other example images use. Two hard constraints,
+# both discovered the expensive way:
+#   * esm 3.2.2+ declares requires-python >=3.12,<3.13 (3.2.1.post1 was the last
+#     release accepting 3.10).
+#   * biotite, which esm.sdk.api imports, has NO cp310 linux-aarch64 wheel at any
+#     version -- aarch64 builds start at biotite 1.6.0/cp311, and 1.7.1 adds cp312.
+#     On 3.10/arm64 it would compile from sdist, needing gcc and cython.
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Python dependencies, in an order that matters.
+#
+# 1. torch first, CPU build, pinned. Three separate traps here:
+#
+#    a. CPU build. torch 2.13's nvidia deps carry the marker
+#       `platform_system == "Linux"` with NO `platform_machine == "x86_64"`
+#       qualifier, so on arm64 plain PyPI happily installs the nvidia aarch64
+#       (sbsa) wheels -- gigabytes of CUDA that Docker Desktop can never reach.
+#    b. Pinned to 2.9.1. The CPU index does carry aarch64 wheels, but only up to
+#       2.9.1; asking for a newer version makes pip silently backtrack to
+#       whatever it can resolve. esm needs torch>=2.2.0, so 2.9.1 is fine.
+#    c. --extra-index-url, not --index-url alone. --index-url *replaces* PyPI, so
+#       torch's generic dependencies stop resolving. Keeping PyPI as an extra
+#       index fixes that, and `+cpu` still sorts above the plain build.
+#
+#    First in the list because sentence_transformers (via base_requirements)
+#    depends on an unpinned `torch` -- if the base went first it would pull the
+#    CUDA build and this line would degrade to "Requirement already satisfied".
+#
+# 2. base_requirements.txt, with fair-esm filtered out. enzymetk/__init__ imports
+#    every step module unconditionally, which needs transformers, huggingface_hub,
+#    tqdm, typer, pandas, numpy and scikit-learn present at import time.
+#
+#    The grep is the ESM-2/ESM-3 collision, and it is not optional: line 1 of
+#    base_requirements is `fair-esm`, and BOTH fair-esm (Meta, ESM-2) and esm
+#    (EvolutionaryScale, ESM-3) install a top-level `esm/` package. Installing
+#    both leaves a half-overwritten directory where neither import works. To add
+#    ESM-2 to this image later, put fair-esm in its own
+#    `python -m venv --system-site-packages` so its `esm/` shadows this one,
+#    rather than dropping it back into this line.
+#
+#    pandas==2.1.4 declares numpy<2, and biotite only needs numpy>=1.25, so the
+#    numpy 1.x/2.x fight that Dockerfile.Funce works around does not arise here.
+#
+# 3. esm with --no-deps, then its real dependencies by hand. Its declared list is
+#    wrong in a way that is fatal on arm64: it requires `torchtext`, which has no
+#    aarch64 wheel AND no sdist, so a plain `pip install esm` cannot succeed on
+#    this platform at all. Unpacking the wheel and tracing the import graph from
+#    esm.sdk.api / esm.models.esm3 shows torchtext and torchvision are imported by
+#    zero files; boto3 is sagemaker-only; and ipywidgets / IPython / pygtrie /
+#    pydssp / py3dmol are reachable only from esm/widgets, which nothing here
+#    touches. Same --no-deps reasoning as rxnfp in
+#    Dockerfile.funce_with_reaction_embedding.
+#
+#    The packages below are that traced set, minus what steps 1-2 already provide
+#    (numpy, pandas, scipy, tqdm, requests, huggingface_hub, tokenizers,
+#    typing_extensions, and Bio from biopython). flash_attn is NOT among them:
+#    every one of its imports in esm sits inside try/except ImportError, and
+#    use_flash_attn defaults to False in TransformerStack, so CPU inference is the
+#    supported path.
+#
+#    tenacity and httpx are on the list because `from esm.sdk.api import ...` first
+#    executes esm/sdk/__init__.py, which imports the Forge HTTP client whether or
+#    not you use Forge. Easy to miss when tracing esm.sdk.api alone -- and the
+#    failure is silent, because embedprotein_esm3_step.py catches the ImportError
+#    and prints a misleading "Needs esm3 package" before dying later on NameError.
+#
+# 4. transformers<4.48.2 is esm's own pin, which --no-deps skipped. It matters:
+#    EsmSequenceTokenizer subclasses PreTrainedTokenizerFast, and subclassing is
+#    exactly where transformers version drift breaks.
+# 5. Two of those packages have no prebuilt wheel for this platform and must be
+#    compiled, which is why a toolchain appears in a pip-only image:
+#      * zstd     -- manylinux aarch64 wheels stop at cp311; cp312 is x86/mac only.
+#      * biotraj  -- a hard dependency of biotite (biotraj>=1.0,<2.0), and it
+#                    publishes x86_64 linux wheels ONLY, at every version.
+#    Both are small C/C++ extensions and build in seconds. gcc is installed and
+#    purged inside a single RUN on purpose: layers are additive, so purging in a
+#    later step would leave the ~250 MB in the image anyway.
+#
+#    zstd is genuinely required, not optional -- esm/utils/misc.py imports it at
+#    module level (only deserialize_tensors() calls it, but the import is top of
+#    file, so it must resolve).
+COPY enzymetk/conda_envs/base_requirements.txt /app/base_requirements.txt
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends build-essential && \
+    rm -rf /var/lib/apt/lists/* && \
+    grep -v '^fair-esm' /app/base_requirements.txt > /app/requirements.txt && \
+    pip install --no-cache-dir "torch==2.9.1" \
+        --index-url https://download.pytorch.org/whl/cpu \
+        --extra-index-url https://pypi.org/simple && \
+    pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir typer && \
+    pip install --no-cache-dir --no-deps "esm==3.2.3" && \
+    pip install --no-cache-dir \
+        attrs biotite brotli cloudpathlib einops msgpack msgpack-numpy zstd \
+        tenacity httpx && \
+    pip install --no-cache-dir "transformers<4.48.2" && \
+    apt-get purge -y --auto-remove build-essential && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install enzymetk on PYTHONPATH directly (matches the other example images;
+# setup.py references optional packages that are not all installed here).
+COPY setup.py README.md LICENSE /app/
+COPY enzymetk/ /app/enzymetk/
+ENV PYTHONPATH=/app
+
+COPY examples/esm3.py /app/examples/
+
+# Nothing large is baked in. HF_HOME has to point at the mount: left at its
+# default the 5.4 GB snapshot lands in ~/.cache/huggingface inside the container
+# layer, so `docker run --rm` discards it and re-downloads on the next run. It is
+# set here rather than in the script because huggingface_hub freezes its cache
+# paths into module constants at import time.
+VOLUME /data
+ENV DATA_DIR=/data
+ENV HF_HOME=/data/hf
+
+CMD ["python", "examples/esm3.py"]
