@@ -67,6 +67,7 @@ from enzymetk.metagenomics_prokka_annotate_genes import Prokka
 # Prediction
 from enzymetk.predict_catalyticsite_step import ActiveSitePred
 from enzymetk.predict_Funce_step import Funce
+from enzymetk.predict_funce_step_rxnfp_unimol_workflow import Funce_rxnfp_unimol
 
 # Sequence Search
 from enzymetk.sequence_search_blast import BLAST
@@ -115,6 +116,7 @@ __all__ = [
     # Prediction
     'ActiveSitePred',
     'Funce',
+    'Funce_rxnfp_unimol',
     # Sequence Search
     'BLAST',
     # Similarity Search

@@ -1,0 +1,147 @@
+# Funce end to end from a reaction SMILES: encode the reaction, pair it with the
+# protein embeddings, score, rank. CPU only, runs offline once the mount is
+# populated.
+#
+# Build:  docker build -f examples/docker/Dockerfile.funce_rxnfp_unimol_workflow -t enzymetk-funce-rxnfp-unimol-workflow .
+# Run:    docker run -v "$(pwd)/examples/data:/app/examples/data" enzymetk-funce-rxnfp-unimol-workflow
+#
+# Runs examples/funce_rxnfp_unimol_workflow.py, a thin wrapper over the
+# Funce_rxnfp_unimol step -- the whole recipe lives in
+# enzymetk/predict_funce_step_rxnfp_unimol_workflow.py, shipped by the COPY
+# enzymetk/ line below.
+#
+# The script resolves its paths relative to itself, so the mount target above is
+# the data folder it already looks for -- no environment variables involved. It
+# also honours DATA_DIR if you prefer Dockerfile.Funce's convention:
+#   docker run -v "$(pwd)/examples/data:/data" -e DATA_DIR=/data enzymetk-funce-rxnfp-unimol-workflow
+#
+# Python 3.12, not 3.10 (Dockerfile.encode_reaction / Dockerfile.Funce)
+# ---------------------------------------------------------------------
+# So that pandas 3.x can install. pandas declares Requires-Python >=3.11, so a
+# 3.10 image is capped at pandas 2.x -- and a sequence-embedding database pickled
+# on a pandas 3.x host stores text as a native str dtype (in the columns AND in
+# the column Index) that pandas 2.x refuses to unpickle:
+#
+#   NotImplementedError: (<StringDtype(storage='python', na_value=nan)>, array([...]))
+#
+# examples/data/sequence_embeddings/enzymes_sample_10_but_9.pkl is exactly such a
+# file. Matching the writer's major version is the fix; Dockerfile.esm3 is already
+# on 3.12, so this also stops the DB-producing and DB-consuming images disagreeing.
+#
+# Dependencies are named here rather than pulled from
+# enzymetk/conda_envs/base_requirements.txt on purpose: that file pins
+# pandas==2.1.4 (which is what caps numpy below 2) and carries fair-esm, seaborn,
+# spacy, pubchempy and pyfaidx that nothing on this path imports. What follows is
+# what this example actually needs.
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# unimol_tools imports rdkit.Chem.PandasTools at module load, which pulls in
+# rdkit.Chem.Draw -- and that links against X11/expat/glib shared objects the
+# -slim image does not ship. Without these the import dies on
+# "libXrender.so.1 / libexpat.so.1: cannot open shared object file".
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        libxrender1 libxext6 libsm6 libexpat1 libglib2.0-0 && \
+    rm -rf /var/lib/apt/lists/*
+
+# 1. torch, CPU build, FIRST -- before anything that depends on it. Needed by rxnfp
+#    (a BERT model), UniMol, and Funce inference itself (the checkpoints pickle live
+#    nn.Module instances). Not needed for the protein embeddings: those are read
+#    straight from the database, which is why ESM3 is absent here.
+#
+#    Two things have to be true at once, and getting either wrong is quiet:
+#
+#    a. CPU build. The default PyPI wheel drags in ~2.9 GB of nvidia-cu* libraries
+#       nothing here uses. Measured on the 3.10 image: 6.41 GB with them, 2.2 GB
+#       without.
+#    b. --extra-index-url, and a >=2.6 floor. --index-url *replaces* PyPI rather
+#       than adding to it, so torch's own dependencies are not all resolvable from
+#       the CPU index and pip silently backtracks to an older release. Below the
+#       torch>=2.6 floor, transformers refuses to torch.load a .bin checkpoint
+#       (CVE-2025-32434) -- and rxnfp's bundled BERT weights are .bin, not
+#       safetensors. The failure surfaces at runtime, inside the rxnfp subprocess,
+#       as a ValueError about upgrading torch. Keeping PyPI as an extra index lets
+#       the generic deps resolve, and `+cpu` sorts above the plain PyPI build at
+#       equal version, so the CPU wheel still wins.
+#
+# 2. Runtime dependencies, all of them imported on this path:
+#      pandas, numpy       -- everywhere; pandas 3.x is the point of this image
+#      scikit-learn        -- Funce's *_conf.pkl unpickle MinMaxScaler objects, and
+#                             predict_Funce_step imports f1_score/average_precision_score
+#      sciutil, typer      -- imported unconditionally by enzymetk/step.py
+#      tqdm                -- imported unconditionally by several steps
+#      rdkit               -- unimol_tools, and the similarity steps
+#      biopython           -- imported by steps that enzymetk/__init__ pulls in
+#      transformers<5      -- rxnfp calls the tokenizer's encode_plus /
+#                             batch_encode_plus, which transformers 5 removed.
+#                             Safe to pin: unimol_tools' own `transformers` module is
+#                             internal to that package and unrelated to HuggingFace.
+#      huggingface_hub     -- imported by enzymetk/__init__, and how unimol_tools
+#                             downloads the 659 MB checkpoint
+#      setuptools<81       -- for pkg_resources, which rxnfp imports at module load.
+#                             Two separate removals have to be worked around, and
+#                             this is the one thing 3.12 costs us over 3.10:
+#                             (a) Python 3.12 dropped the bundled setuptools, so the
+#                                 -slim image no longer preinstalls it at all; and
+#                             (b) setuptools 81 deprecated pkg_resources and 84
+#                                 removed it, so installing plain `setuptools` gets
+#                                 84.x and pkg_resources is *still* missing.
+#                             Without the <81 pin,
+#                             `from rxnfp.transformer_fingerprints import ...` dies on
+#                             ModuleNotFoundError: No module named 'pkg_resources'.
+#
+# 3. unimol_tools after the numeric stack, so it is one clean resolution rather than
+#    pip backtracking through the tree.
+#
+# 4. rxnfp goes in with --no-deps ON PURPOSE. Its metadata hard-pins scipy==1.4.1,
+#    scikit-learn==0.23.1 and matplotlib==3.2.2 -- 2020 releases with no wheels for
+#    modern Python, so a plain `pip install rxnfp` fails building them from source.
+#    Everything RXNBERTFingerprintGenerator actually imports (torch, transformers,
+#    numpy, tqdm, rdkit) is already present from steps 1-3. Its `import tmap` sits
+#    inside the *minhash* generator's __init__, not the one we use, so the conda-only
+#    tmap dependency never loads. The BERT weights ship inside the wheel
+#    (rxnfp/models/transformers/bert_ft/), so there is no runtime download.
+#    --no-deps also keeps its scikit-learn==0.23.1 pin from clobbering the version
+#    that unpickles the Funce scalers.
+#
+# drfp is deliberately NOT installed: the step is rxnfp-only, because
+# forward_reaction is nn.Linear(in=256) and was fit on rxnfp's dense continuous
+# basis. See the module docstring of
+# enzymetk/predict_funce_step_rxnfp_unimol_workflow.py.
+RUN pip install --no-cache-dir "torch>=2.6" \
+        --index-url https://download.pytorch.org/whl/cpu \
+        --extra-index-url https://pypi.org/simple && \
+    pip install --no-cache-dir \
+        "pandas>=3" numpy scikit-learn sciutil typer tqdm rdkit biopython \
+        "transformers<5" huggingface_hub "setuptools<81" && \
+    pip install --no-cache-dir unimol_tools && \
+    pip install --no-cache-dir --no-deps rxnfp
+
+# Install enzymetk on PYTHONPATH directly (matches the other example images).
+# This carries both the step itself
+# (enzymetk/predict_funce_step_rxnfp_unimol_workflow.py) and
+# enzymetk/Funce_model.py, whose classes torch.load needs to resolve when
+# unpickling the checkpoints.
+COPY setup.py README.md LICENSE /app/
+COPY enzymetk/ /app/enzymetk/
+ENV PYTHONPATH=/app
+
+# rxnfp imports pkg_resources, and setuptools 80.x warns about that on stderr.
+# enzymetk/step.py's run() labels ALL subprocess stderr as "Error:" and prints it in
+# red, so this harmless deprecation notice looks like the run failed. Filtered by
+# message so any other UserWarning still gets through.
+ENV PYTHONWARNINGS="ignore:pkg_resources is deprecated as an API:UserWarning"
+
+COPY examples/funce_rxnfp_unimol_workflow.py /app/examples/
+
+# Nothing large is baked in. The Funce checkpoints (1.5 GB), the sequence embedding
+# databases, the UniMol checkpoint (659 MB) and the results all live under
+# examples/data, so mount that folder -- the first run populates what is missing.
+# The rxnfp BERT weights are the exception: they ship inside the wheel already.
+# The step's rxnfp_env defaults to None, so its subprocess runs on this interpreter
+# rather than looking for a `conda run -n rxnfp` that does not exist here. The
+# script passes download_if_missing=True, so a first run into an empty
+# unimol_weights mount fetches the 659 MB checkpoint; later runs find it cached.
+CMD ["python", "examples/funce_rxnfp_unimol_workflow.py"]
